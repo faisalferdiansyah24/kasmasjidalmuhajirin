@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             uid: authUser.uid,
             email: authUser.email || (authUser.isAnonymous ? 'anonymous@almuhajirin.com' : ''),
             displayName: authUser.displayName || (authUser.isAnonymous ? 'Administrator Masjid' : 'Ikhwan Al-Muhajirin'),
-            photoURL: authUser.photoURL || (authUser.isAnonymous ? `https://api.dicebear.com/7.x/avataaars/svg?seed=admin` : ''),
+            photoURL: authUser.photoURL || (authUser.isAnonymous ? `https://api.dicebear.com/7.x/avataaars/svg?seed=admin` : null),
             role: intendedRole
           };
           await setDoc(userDoc, newProfile);

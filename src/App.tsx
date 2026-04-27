@@ -312,7 +312,19 @@ const Dashboard = () => {
 
           <div className="mt-auto p-6 space-y-4">
             <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 border border-slate-100">
-              <img src={profile?.photoURL || ''} alt={profile?.displayName || 'User'} className="w-10 h-10 rounded-full bg-slate-300 ring-4 ring-white shadow-sm" />
+              {profile?.photoURL && (
+                <img 
+                  src={profile.photoURL} 
+                  alt={profile?.displayName || 'User'} 
+                  className="w-10 h-10 rounded-full bg-slate-300 ring-4 ring-white shadow-sm" 
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              {!profile?.photoURL && (
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold ring-4 ring-white shadow-sm">
+                  {profile?.displayName?.charAt(0) || 'U'}
+                </div>
+              )}
               <div className="overflow-hidden">
                 <p className="text-xs font-bold truncate text-masjid-slate">{profile?.displayName}</p>
                 <p className="text-[10px] text-slate-400 truncate uppercase tracking-widest font-bold">{profile?.role}</p>

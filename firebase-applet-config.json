@@ -1,10 +1,9 @@
 {
-  "projectId": "projrct-masjidalmuhajirin",
-  "appId": "1:828500987917:web:9d3b11041dced74a38c544",
-  "apiKey": "AIzaSyDmgNt8w6C9mK-b286pTxS9DVF9Kmvn3",
+  "apiKey": "AIzaSyDmgNt8w6C9mK-b286pTxS9DVF9Kmvn3BQ",
   "authDomain": "project-masjidalmuhajirin.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-2e241cc6-408c-46ff-8bc5-79b6e8e8e29f",
-  "storageBucket": "project-masjidalmuhajirin.firebasestorage.ap",
+  "projectId": "project-masjidalmuhajirin",
+  "storageBucket": "project-masjidalmuhajirin.firebasestorage.app",
   "messagingSenderId": "828500987917",
-  "measurementId": ""
+  "appId": "1:828500987917:web:9d3b11041dced74a38c544",
+  "firestoreDatabaseId": "ai-studio-2e241cc6-408c-46ff-8bc5-79b6e8e8e29f"
 }
