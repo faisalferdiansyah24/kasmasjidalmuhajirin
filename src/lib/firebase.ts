@@ -33,6 +33,7 @@ export const localDb = {
     const newTx = { ...data, id: 'local-' + Date.now(), isLocal: true };
     txs.push(newTx);
     localStorage.setItem('local_transactions', JSON.stringify(txs));
+    window.dispatchEvent(new Event('local-db-update'));
     return newTx;
   },
   getTransactions: () => {
@@ -43,6 +44,7 @@ export const localDb = {
     const newCat = { ...data, id: 'local-cat-' + Date.now(), isLocal: true };
     cats.push(newCat);
     localStorage.setItem('local_categories', JSON.stringify(cats));
+    window.dispatchEvent(new Event('local-db-update'));
     return newCat;
   },
   getCategories: () => {
@@ -50,7 +52,12 @@ export const localDb = {
   }
 };
 
-export const isLocalMode = () => sessionStorage.getItem('manualUser') === 'local';
+// Dynamic check: Local if no API key or if user explicitly chose local mode
+export const isLocalMode = () => {
+  const config = firebaseConfig as any;
+  if (!config.apiKey || config.apiKey === "REPLACE_WITH_YOUR_API_KEY") return true;
+  return sessionStorage.getItem('manualUser') === 'local';
+};
 
 export const auth = getAuth(app);
 

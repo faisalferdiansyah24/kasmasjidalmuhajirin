@@ -92,15 +92,13 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
     const data = values as TransactionValues;
     if (!user) return;
     setLoading(true);
-    const local = isLocalMode();
 
     try {
-      // Find if category already exists
+      // Find or create category
       let category = categories.find(c => c.name.toLowerCase() === data.categoryName.toLowerCase() && c.type === data.type);
       let categoryId = category?.id || '';
-      let finalCategoryName = data.categoryName;
+      const local = isLocalMode();
 
-      // If it doesn't exist, create it automatically
       if (!categoryId) {
         if (local) {
           const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
@@ -114,66 +112,59 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
             });
             categoryId = newCatRef.id;
           } catch (e) {
-            console.error("Failed to create new category record, using local/temporary ID", e);
             const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
             categoryId = localCat.id;
           }
         }
       }
 
-      const transactionData = {
+      const transactionBase = {
         type: data.type,
         amount: data.amount,
         categoryId,
-        categoryName: finalCategoryName,
+        categoryName: data.categoryName,
         description: data.description,
         date: data.date,
-        updatedAt: serverTimestamp(),
+        createdBy: user.uid,
       };
 
       if (local) {
         localDb.saveTransaction({
-          ...transactionData,
-          createdBy: user.uid,
+          ...transactionBase,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          date: data.date || new Date().toISOString(),
         });
-        toast.success('Transaksi disimpan (Mode Lokal)');
+        toast.success('Tersimpan di Penyimpanan Lokal');
       } else {
         try {
-          if (editingTransaction) {
+          if (editingTransaction && !editingTransaction.id.startsWith('local-')) {
             const docRef = doc(db, 'transactions', editingTransaction.id);
-            await updateDoc(docRef, transactionData);
-            toast.success('Transaksi berhasil diperbarui');
+            await updateDoc(docRef, { ...transactionBase, updatedAt: serverTimestamp() });
+            toast.success('Berhasil diperbarui di Cloud');
           } else {
-            try {
-              await addDoc(collection(db, 'transactions'), {
-                ...transactionData,
-                createdBy: user.uid,
-                createdAt: serverTimestamp(),
-              });
-              toast.success('Transaksi berhasil ditambahkan');
-            } catch (e: any) {
-              console.warn("Firestore save failed, using local storage fallback", e.message);
-              localDb.saveTransaction({
-                ...transactionData,
-                createdBy: user.uid,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              });
-              toast.warning('Tersimpan di penyimpanan lokal browser (Cloud Offline)');
-            }
+            await addDoc(collection(db, 'transactions'), {
+              ...transactionBase,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            toast.success('Berhasil disimpan ke Cloud');
           }
         } catch (e) {
-          handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
+          console.warn("Cloud save failed, falling back to local", e);
+          localDb.saveTransaction({
+            ...transactionBase,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          toast.warning('Tersimpan secara Lokal (Cloud Offline)');
         }
       }
+      
       onSuccess();
       reset();
     } catch (e) {
-      console.error("Generic form error:", e);
-      toast.error('Gagal memproses transaksi');
+      console.error("Save error:", e);
+      toast.error('Gagal menyimpan transaksi');
     } finally {
       setLoading(false);
     }

@@ -80,30 +80,10 @@ const LoginScreen = () => {
     e.preventDefault();
     setIsLoggingIn(true);
     try {
-      const success = await manualLogin(username, password);
-      if (success) {
-        toast.success('Selamat Datang, Admin');
-      } else {
-        toast.error('Username atau Password salah');
-      }
+      await manualLogin(username || 'admin', password);
+      toast.success('Selamat Datang, Admin');
     } catch (error) {
-      toast.error('Terjadi kesalahan saat login');
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setIsLoggingIn(true);
-    try {
-      await login();
-      toast.success('Berhasil masuk dengan Google');
-    } catch (error: any) {
-      if (error.code === 'auth/popup-blocked') {
-        toast.error('Popup diblokir browser');
-      } else {
-        toast.error('Gagal masuk');
-      }
+      toast.error('Gagal masuk');
     } finally {
       setIsLoggingIn(false);
     }
@@ -111,7 +91,6 @@ const LoginScreen = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-masjid-emerald-dark overflow-hidden relative">
-      {/* Dynamic Background Patterns */}
       <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
         <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
           <pattern id="islamic-grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -120,116 +99,53 @@ const LoginScreen = () => {
           </pattern>
           <rect width="100%" height="100%" fill="url(#islamic-grid)" />
         </svg>
-        <motion.div 
-          animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 10, repeat: Infinity }}
-          className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-emerald-400 rounded-full blur-[120px]" 
-        />
-        <motion.div 
-          animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 15, repeat: Infinity, delay: 2 }}
-          className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-teal-500 rounded-full blur-[120px]" 
-        />
       </div>
       
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="z-10 w-full max-w-[420px] mx-4"
+        className="z-10 w-full max-w-[400px] mx-4"
       >
         <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 lg:p-10 border border-white/20 overflow-hidden relative">
           <div className="text-center mb-10">
             <div className="w-20 h-20 bg-emerald-50 rounded-3xl flex items-center justify-center mx-auto text-emerald-600 mb-6 shadow-sm">
               <Wallet size={40} className="stroke-[1.5]" />
             </div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-800">Al-Muhajirin</h1>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-2">Sistem Keuangan Masjid</p>
+            <h1 className="text-3xl font-black tracking-tight text-slate-800 text-center">Masjid Al-Muhajirin</h1>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-2 text-center">Sistem Keuangan (Mode Lokal)</p>
           </div>
 
-          <AnimatePresence mode="wait">
-            {mode === 'manual' ? (
-              <motion.form 
-                key="manual"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                onSubmit={handleManualLogin} 
-                className="space-y-5"
-              >
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">Username</label>
-                  <input 
-                    type="text" 
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Contoh: admin"
-                    className="w-full h-14 bg-slate-50 border-transparent focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 rounded-2xl px-5 text-sm font-bold transition-all outline-none text-slate-700"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">Password</label>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full h-14 bg-slate-50 border-transparent focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 rounded-2xl px-5 text-sm font-bold transition-all outline-none text-slate-700"
-                    required
-                  />
-                </div>
-                <Button 
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full h-14 bg-masjid-emerald-dark hover:bg-masjid-emerald text-white rounded-2xl font-bold text-base shadow-xl shadow-emerald-200 transition-all active:scale-95"
-                >
-                  {isLoggingIn ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Masuk Ke Sistem'}
-                </Button>
-              </motion.form>
-            ) : (
-              <motion.div 
-                key="google"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-4 py-4"
-              >
-                <Button 
-                  onClick={handleGoogleLogin}
-                  disabled={isLoggingIn}
-                  className="w-full h-14 bg-white border-2 border-slate-100 hover:border-emerald-500/30 hover:bg-emerald-50 text-slate-700 rounded-2xl flex items-center justify-center gap-3 transition-all font-bold group shadow-sm"
-                >
-                  {isLoggingIn ? (
-                    <div className="w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-                  ) : (
-                    <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                  )}
-                  Google Login
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-100"></div>
+          <form onSubmit={handleManualLogin} className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">Username</label>
+              <input 
+                type="text" 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Contoh: admin"
+                className="w-full h-14 bg-slate-50 border-transparent focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 rounded-2xl px-5 text-sm font-bold transition-all outline-none text-slate-700"
+                required
+              />
             </div>
-            <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-black text-slate-300">
-              <span className="bg-white px-4">Atau</span>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">Password</label>
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full h-14 bg-slate-50 border-transparent focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 rounded-2xl px-5 text-sm font-bold transition-all outline-none text-slate-700"
+                required
+              />
             </div>
-          </div>
-
-          <button 
-            onClick={() => setMode(mode === 'manual' ? 'google' : 'manual')}
-            className="w-full text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
-          >
-            Masuk {mode === 'manual' ? 'dengan Google Akun' : 'dengan Username & Password'}
-          </button>
+            <Button 
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full h-14 bg-masjid-emerald-dark hover:bg-masjid-emerald text-white rounded-2xl font-bold text-base shadow-xl shadow-emerald-200 transition-all active:scale-95"
+            >
+              {isLoggingIn ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Masuk Ke Sistem'}
+            </Button>
+          </form>
         </div>
         
         <p className="text-center mt-8 text-white/50 text-[10px] font-bold uppercase tracking-[0.2em]">
@@ -250,97 +166,37 @@ const Dashboard = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
-    // Seed and fetch categories
-    const initCategories = async () => {
-      const local = isLocalMode();
-      if (local) {
-        setCategories(localDb.getCategories() as Category[]);
-        return () => {};
+    // Pure local categories
+    const local = isLocalMode();
+    const fetchCategories = () => {
+      const cats = localDb.getCategories() as Category[];
+      if (cats.length === 0) {
+        const defaultCats = [
+          { id: '1', name: 'Infaq Jumat', type: 'income' as TransactionType },
+          { id: '2', name: 'Sedekah Subuh', type: 'income' as TransactionType },
+          { id: '3', name: 'Kotak Amal', type: 'income' as TransactionType },
+          { id: '4', name: 'Listrik/Air', type: 'expense' as TransactionType },
+          { id: '5', name: 'Gaji Marbot', type: 'expense' as TransactionType }
+        ];
+        setCategories(defaultCats);
+      } else {
+        setCategories(cats);
       }
-
-      const catRef = collection(db, 'categories');
-      const q = query(catRef, orderBy('name', 'asc'));
-      
-      const unsubscribe = onSnapshot(q, async (snap) => {
-        const remoteCats = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
-        const localCats = localDb.getCategories() as Category[];
-        
-        // Merge without duplicates by name+type
-        const merged = [...remoteCats];
-        localCats.forEach(lc => {
-          if (!merged.find(mc => mc.name.toLowerCase() === lc.name.toLowerCase() && mc.type === lc.type)) {
-            merged.push(lc);
-          }
-        });
-        
-        setCategories(merged);
-
-        if (snap.empty && isAdmin && remoteCats.length === 0) {
-          const defaultCats = [
-            { name: 'Infaq Jumat', type: 'income' },
-            { name: 'Sedekah Subuh', type: 'income' },
-            { name: 'Kotak Amal', type: 'income' },
-            { name: 'Zakat/Wakaf', type: 'income' },
-            { name: 'Listrik/Air', type: 'expense' },
-            { name: 'Kebersihan', type: 'expense' },
-            { name: 'Gaji Marbot', type: 'expense' },
-            { name: 'Kegiatan Masjid', type: 'expense' },
-            { name: 'Lain-lain', type: 'expense' }
-          ];
-          for (const cat of defaultCats) {
-            try {
-              await addDoc(collection(db, 'categories'), cat);
-            } catch (e) {
-              console.error("Failed to seed default categories to cloud", e);
-            }
-          }
-        }
-      }, (error) => {
-        console.warn("Retrying category connection...", error.message);
-        // Fallback to purely local if cloud fails
-        setCategories(localDb.getCategories() as Category[]);
-      });
-      
-      return unsubscribe;
     };
-    
-    let unsub: any;
-    initCategories().then(u => unsub = u);
-    return () => unsub && unsub();
+
+    fetchCategories();
+    window.addEventListener('local-db-update', fetchCategories);
+    return () => window.removeEventListener('local-db-update', fetchCategories);
   }, [isAdmin]);
 
   useEffect(() => {
-    const local = isLocalMode();
-    if (local) {
+    const fetchTransactions = () => {
       setTransactions(localDb.getTransactions() as Transaction[]);
-      return () => {};
-    }
+    };
 
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const remoteData = snapshot.docs.map(doc => {
-        const d = doc.data();
-        return { 
-          ...d, 
-          id: doc.id,
-          date: d.date || new Date().toISOString(), // safety
-        } as Transaction;
-      });
-      const localData = localDb.getTransactions() as Transaction[];
-      
-      // Merge and sort
-      const merged = [...remoteData, ...localData].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      
-      setTransactions(merged);
-    }, (error) => {
-      console.warn("Firestore transactions snapshot error:", error.message);
-      // Fallback to local
-      setTransactions(localDb.getTransactions() as Transaction[]);
-    });
-
-    return () => unsubscribe();
+    fetchTransactions();
+    window.addEventListener('local-db-update', fetchTransactions);
+    return () => window.removeEventListener('local-db-update', fetchTransactions);
   }, []);
 
   const stats = transactions.reduce((acc: { income: number; expense: number }, curr) => {
@@ -454,8 +310,8 @@ const Dashboard = () => {
             </nav>
           </div>
 
-          <div className="mt-auto p-6">
-            <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4 border border-slate-100">
+          <div className="mt-auto p-6 space-y-4">
+            <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 border border-slate-100">
               <img src={profile?.photoURL || ''} alt={profile?.displayName || 'User'} className="w-10 h-10 rounded-full bg-slate-300 ring-4 ring-white shadow-sm" />
               <div className="overflow-hidden">
                 <p className="text-xs font-bold truncate text-masjid-slate">{profile?.displayName}</p>

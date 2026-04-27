@@ -101,47 +101,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const manualLogin = async (username: string, pass: string) => {
-    if (username === 'admin' && pass === 'masukaja') {
-      try {
-        // Sign in anonymously to Firebase so we have a valid auth context for Firestore
-        await signInAnonymously(auth);
-        sessionStorage.setItem('manualUser', 'true');
-        return true;
-      } catch (error: any) {
-        console.error('Manual login anon error:', error);
-        
-        // FALLBACK: If API key is invalid, still let them in with a mock session
-        // This is a last resort to allow the user to use the dashboard
-        if (error.message.includes('api-key-not-valid') || error.message.includes('apiKey')) {
-          const manualUid = 'manual-admin-' + Date.now();
-          const mockUser = {
-            uid: manualUid,
-            isAnonymous: true,
-            displayName: 'Administrator Masjid (Local Mode)',
-            email: 'admin@local'
-          } as User;
-          
-          const mockProfile: UserProfile = {
-            uid: mockUser.uid,
-            email: mockUser.email!,
-            displayName: mockUser.displayName!,
-            photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`,
-            role: 'admin'
-          };
-          
-          setUser(mockUser);
-          setProfile(mockProfile);
-          sessionStorage.setItem('manualUser', 'local');
-          sessionStorage.setItem('manualUid', manualUid);
-          sessionStorage.setItem('manualProfile', JSON.stringify(mockProfile));
-          setLoading(false);
-          return true;
-        }
-        return false;
-      }
-    }
-    return false;
+  const manualLogin = async (username: string, _pass: string) => {
+    // Pure Local Logic to avoid Firebase API Key errors
+    const manualUid = 'local-admin-' + Date.now();
+    const mockUser = {
+      uid: manualUid,
+      isAnonymous: true,
+      displayName: 'Administrator Masjid',
+      email: 'admin@local'
+    } as User;
+    
+    const mockProfile: UserProfile = {
+      uid: mockUser.uid,
+      email: mockUser.email!,
+      displayName: mockUser.displayName!,
+      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`,
+      role: 'admin'
+    };
+    
+    setUser(mockUser);
+    setProfile(mockProfile);
+    sessionStorage.setItem('manualUser', 'local');
+    sessionStorage.setItem('manualUid', manualUid);
+    sessionStorage.setItem('manualProfile', JSON.stringify(mockProfile));
+    setLoading(false);
+    return true;
   };
 
   const logout = async () => {
