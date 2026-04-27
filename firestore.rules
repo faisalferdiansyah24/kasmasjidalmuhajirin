@@ -56,7 +56,7 @@ service cloud.firestore {
         && data.categoryName is string
         && data.description is string
         && data.date is string
-        && (data.createdBy == request.auth.uid || isManualAdmin(data.createdBy))
+        && ((isSignedIn() && data.createdBy == request.auth.uid) || isManualAdmin(data.createdBy))
         && data.createdAt == request.time;
     }
 

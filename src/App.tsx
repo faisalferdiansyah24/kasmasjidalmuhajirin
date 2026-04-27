@@ -10,7 +10,7 @@ import {
   getDocs,
   addDoc
 } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType, localDb } from './lib/firebase.ts';
+import { db, auth, handleFirestoreError, OperationType, localDb, isLocalMode } from './lib/firebase.ts';
 import { useAuth, AuthProvider } from './context/AuthContext.tsx';
 import { Transaction, Category, TransactionType } from './types.ts';
 import { 
@@ -252,6 +252,12 @@ const Dashboard = () => {
   useEffect(() => {
     // Seed and fetch categories
     const initCategories = async () => {
+      const local = isLocalMode();
+      if (local) {
+        setCategories(localDb.getCategories() as Category[]);
+        return () => {};
+      }
+
       const catRef = collection(db, 'categories');
       const q = query(catRef, orderBy('name', 'asc'));
       
@@ -304,6 +310,12 @@ const Dashboard = () => {
   }, [isAdmin]);
 
   useEffect(() => {
+    const local = isLocalMode();
+    if (local) {
+      setTransactions(localDb.getTransactions() as Transaction[]);
+      return () => {};
+    }
+
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const remoteData = snapshot.docs.map(doc => {

@@ -13,7 +13,7 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, localDb } from '../lib/firebase.ts';
+import { db, handleFirestoreError, OperationType, localDb, isLocalMode } from '../lib/firebase.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Button } from './ui/button.tsx';
 import { Input } from './ui/input.tsx';
@@ -92,6 +92,7 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
     const data = values as TransactionValues;
     if (!user) return;
     setLoading(true);
+    const local = isLocalMode();
 
     try {
       // Find if category already exists
@@ -101,17 +102,22 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
 
       // If it doesn't exist, create it automatically
       if (!categoryId) {
-        try {
-          const newCatRef = await addDoc(collection(db, 'categories'), {
-            name: data.categoryName,
-            type: data.type,
-            createdAt: serverTimestamp()
-          });
-          categoryId = newCatRef.id;
-        } catch (e) {
-          console.error("Failed to create new category record, using local/temporary ID", e);
+        if (local) {
           const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
           categoryId = localCat.id;
+        } else {
+          try {
+            const newCatRef = await addDoc(collection(db, 'categories'), {
+              name: data.categoryName,
+              type: data.type,
+              createdAt: serverTimestamp()
+            });
+            categoryId = newCatRef.id;
+          } catch (e) {
+            console.error("Failed to create new category record, using local/temporary ID", e);
+            const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
+            categoryId = localCat.id;
+          }
         }
       }
 
@@ -125,35 +131,46 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
         updatedAt: serverTimestamp(),
       };
 
-      try {
-        if (editingTransaction) {
-          const docRef = doc(db, 'transactions', editingTransaction.id);
-          await updateDoc(docRef, transactionData);
-          toast.success('Transaksi berhasil diperbarui');
-        } else {
-          try {
-            await addDoc(collection(db, 'transactions'), {
-              ...transactionData,
-              createdBy: user.uid,
-              createdAt: serverTimestamp(),
-            });
-            toast.success('Transaksi berhasil ditambahkan');
-          } catch (e: any) {
-            console.warn("Firestore save failed, using local storage fallback", e.message);
-            localDb.saveTransaction({
-              ...transactionData,
-              createdBy: user.uid,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-            toast.warning('Tersimpan di penyimpanan lokal browser (Cloud Offline)');
+      if (local) {
+        localDb.saveTransaction({
+          ...transactionData,
+          createdBy: user.uid,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          date: data.date || new Date().toISOString(),
+        });
+        toast.success('Transaksi disimpan (Mode Lokal)');
+      } else {
+        try {
+          if (editingTransaction) {
+            const docRef = doc(db, 'transactions', editingTransaction.id);
+            await updateDoc(docRef, transactionData);
+            toast.success('Transaksi berhasil diperbarui');
+          } else {
+            try {
+              await addDoc(collection(db, 'transactions'), {
+                ...transactionData,
+                createdBy: user.uid,
+                createdAt: serverTimestamp(),
+              });
+              toast.success('Transaksi berhasil ditambahkan');
+            } catch (e: any) {
+              console.warn("Firestore save failed, using local storage fallback", e.message);
+              localDb.saveTransaction({
+                ...transactionData,
+                createdBy: user.uid,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              toast.warning('Tersimpan di penyimpanan lokal browser (Cloud Offline)');
+            }
           }
+        } catch (e) {
+          handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
         }
-        onSuccess();
-        reset();
-      } catch (e) {
-        handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
       }
+      onSuccess();
+      reset();
     } catch (e) {
       console.error("Generic form error:", e);
       toast.error('Gagal memproses transaksi');

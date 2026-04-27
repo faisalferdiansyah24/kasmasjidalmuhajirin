@@ -50,6 +50,8 @@ export const localDb = {
   }
 };
 
+export const isLocalMode = () => sessionStorage.getItem('manualUser') === 'local';
+
 export const auth = getAuth(app);
 
 // Authentication readiness state
