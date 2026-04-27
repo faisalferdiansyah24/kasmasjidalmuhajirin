@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isHardcodedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'faisalferdiansyah69@gmail.com' && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isHardcodedAdmin() || (isSignedIn() && getUserRole() == 'admin');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Validation Helpers ---
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['type', 'amount', 'categoryId', 'description', 'date', 'createdBy', 'createdAt'])
+        && data.keys().size() >= 7 && data.keys().size() <= 10
+        && data.type in ['income', 'expense']
+        && data.amount is number && data.amount > 0
+        && data.categoryId is string && data.categoryId.size() <= 64
+        && data.description is string && data.description.size() <= 500
+        && data.date is string // simplified for rules
+        && data.createdBy == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['name', 'type'])
+        && data.keys().size() == 2
+        && data.name is string && data.name.size() <= 100
+        && data.type in ['income', 'expense'];
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role'])
+        && data.keys().size() >= 3 && data.keys().size() <= 5
+        && data.uid == request.auth.uid
+        && data.email == request.auth.token.email
+        && data.role in ['admin', 'viewer'];
+    }
+
+    // --- Collection Routes ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      // Only admins can see the full list
+      allow list: if isAdmin();
+      
+      // Allow initial registration
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming()) 
+                     && (incoming().role == 'viewer' || (incoming().role == 'admin' && isHardcodedAdmin()));
+      
+      // Only admins can change roles
+      allow update: if isAdmin() && isValidUser(incoming());
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn(); // Transparency: all masjid members can see transactions
+      
+      allow create: if isAdmin() && isValidTransaction(incoming());
+      
+      allow update: if isAdmin() 
+        && isValidTransaction(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['type', 'amount', 'categoryId', 'categoryName', 'description', 'date', 'updatedAt'])
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        && incoming().createdBy == existing().createdBy;
+        
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidCategory(incoming());
+    }
+  }
+}

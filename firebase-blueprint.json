@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial records for income and expenses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Auto-generated ID" },
+        "type": { "type": "string", "enum": ["income", "expense"], "description": "Type of transaction" },
+        "amount": { "type": "number", "description": "Amount in IDR" },
+        "categoryId": { "type": "string", "description": "ID of the category" },
+        "categoryName": { "type": "string", "description": "Display name of the category" },
+        "description": { "type": "string", "description": "Purpose of the transaction" },
+        "date": { "type": "string", "format": "date-time", "description": "Transaction date" },
+        "createdBy": { "type": "string", "description": "UID of the user who created it" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp" }
+      },
+      "required": ["type", "amount", "categoryId", "description", "date", "createdBy", "createdAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Transaction categories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] }
+      },
+      "required": ["name", "type"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and permissions",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "viewer"] }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "All masjid financial transactions"
+    },
+    "categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Predefined and custom categories"
+    },
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Managed user accounts"
+    }
+  }
+}
