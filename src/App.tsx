@@ -69,8 +69,13 @@ import {
   Tooltip as RechartsTooltip
 } from 'recharts';
 
-const LoginScreen = () => {
-  const { login } = useAuth();
+const Dashboard = () => {
+  const { user, isAdmin, profile, logout, login } = useAuth();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = async () => {
@@ -83,73 +88,12 @@ const LoginScreen = () => {
       if (error.code === 'auth/popup-blocked') {
         toast.error('Popup masuk diblokir oleh browser. Harap izinkan popup.');
       } else {
-        toast.error('Gagal masuk: ' + (error.message || 'Error tidak diketahui'));
+        toast.error('Gagal masuk');
       }
     } finally {
       setIsLoggingIn(false);
     }
   };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-masjid-emerald-dark overflow-hidden relative">
-      {/* Abstract patterns for Islamic aesthetic */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none">
-        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <pattern id="pattern" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M 5 0 L 10 5 L 5 10 L 0 5 Z" fill="none" stroke="white" strokeWidth="0.5" />
-          </pattern>
-          <rect width="100%" height="100%" fill="url(#pattern)" />
-        </svg>
-      </div>
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="z-10 w-full max-w-md p-8 bg-white rounded-[2rem] shadow-2xl text-center space-y-8 border border-white/20"
-      >
-        <div className="space-y-4">
-          <div className="w-20 h-20 bg-masjid-emerald/10 rounded-2xl flex items-center justify-center mx-auto text-masjid-emerald-dark">
-            <Wallet size={40} />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-masjid-slate">Masjid Al-Muhajirin</h2>
-            <p className="text-slate-500 font-sans mt-2">Sistem Informasi Keuangan Masjid</p>
-          </div>
-        </div>
-
-        <Button 
-          onClick={handleLogin}
-          disabled={isLoggingIn}
-          className="w-full h-12 bg-masjid-emerald-dark hover:bg-masjid-emerald text-white rounded-xl flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-masjid-emerald/20"
-        >
-          {isLoggingIn ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-          )}
-          {isLoggingIn ? 'Memproses...' : 'Masuk dengan Google'}
-        </Button>
-
-        <p className="text-xs text-slate-400 font-medium">
-          Khusus untuk Pengurus & Amil Masjid Al-Muhajirin
-        </p>
-      </motion.div>
-    </div>
-  );
-};
-
-const Dashboard = () => {
-  const { user, isAdmin, profile, logout } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
     // Seed categories if empty and user is admin
@@ -298,20 +242,37 @@ const Dashboard = () => {
           </div>
 
           <div className="mt-auto p-6">
-            <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4 border border-slate-100">
-              <img src={profile?.photoURL} alt={profile?.displayName} className="w-10 h-10 rounded-full bg-slate-300 ring-4 ring-white shadow-sm" />
-              <div className="overflow-hidden">
-                <p className="text-xs font-bold truncate text-masjid-slate">{profile?.displayName}</p>
-                <p className="text-[10px] text-slate-400 truncate uppercase tracking-widest font-bold">{profile?.role}</p>
-              </div>
-            </div>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start gap-3 h-12 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl font-bold transition-all"
-              onClick={logout}
-            >
-              <LogOut size={20} /> Logout
-            </Button>
+            {!user ? (
+              <Button 
+                className="w-full h-12 bg-masjid-emerald-dark hover:bg-masjid-emerald text-white rounded-xl flex items-center justify-center gap-3 transition-all shadow-md shadow-emerald-100 font-bold"
+                onClick={handleLogin}
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Wallet size={20} />
+                )}
+                {isLoggingIn ? 'Masuk...' : 'Masuk Pengurus'}
+              </Button>
+            ) : (
+              <>
+                <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4 border border-slate-100">
+                  <img src={profile?.photoURL || ''} alt={profile?.displayName || 'User'} className="w-10 h-10 rounded-full bg-slate-300 ring-4 ring-white shadow-sm" />
+                  <div className="overflow-hidden">
+                    <p className="text-xs font-bold truncate text-masjid-slate">{profile?.displayName}</p>
+                    <p className="text-[10px] text-slate-400 truncate uppercase tracking-widest font-bold">{profile?.role}</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start gap-3 h-12 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl font-bold transition-all"
+                  onClick={logout}
+                >
+                  <LogOut size={20} /> Logout
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </aside>
@@ -594,17 +555,7 @@ function MainContent() {
   return (
     <>
       <Toaster position="top-center" richColors />
-      <AnimatePresence mode="wait">
-        {!user ? (
-          <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LoginScreen />
-          </motion.div>
-        ) : (
-          <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Dashboard />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Dashboard />
     </>
   );
 }
