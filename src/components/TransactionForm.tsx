@@ -13,7 +13,7 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType, localDb, isLocalMode } from '../lib/firebase.ts';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Button } from './ui/button.tsx';
 import { Input } from './ui/input.tsx';
@@ -97,28 +97,22 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
       // Find or create category
       let category = categories.find(c => c.name.toLowerCase() === data.categoryName.toLowerCase() && c.type === data.type);
       let categoryId = category?.id || '';
-      const local = isLocalMode();
 
       if (!categoryId) {
-        if (local) {
-          const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
-          categoryId = localCat.id;
-        } else {
-          try {
-            const newCatRef = await addDoc(collection(db, 'categories'), {
-              name: data.categoryName,
-              type: data.type,
-              createdAt: serverTimestamp()
-            });
-            categoryId = newCatRef.id;
-          } catch (e) {
-            const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
-            categoryId = localCat.id;
-          }
+        try {
+          const newCatRef = await addDoc(collection(db, 'categories'), {
+            name: data.categoryName,
+            type: data.type,
+            createdAt: serverTimestamp()
+          });
+          categoryId = newCatRef.id;
+        } catch (e) {
+          console.error("Failed to create category", e);
+          throw e;
         }
       }
 
-      const transactionBase = {
+      const transactionData = {
         type: data.type,
         amount: data.amount,
         categoryId,
@@ -126,45 +120,26 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
         description: data.description,
         date: data.date,
         createdBy: user.uid,
+        updatedAt: serverTimestamp(),
       };
 
-      if (local) {
-        localDb.saveTransaction({
-          ...transactionBase,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        toast.success('Tersimpan di Penyimpanan Lokal');
+      if (editingTransaction) {
+        const docRef = doc(db, 'transactions', editingTransaction.id);
+        await updateDoc(docRef, transactionData);
+        toast.success('Berhasil diperbarui di Cloud');
       } else {
-        try {
-          if (editingTransaction && !editingTransaction.id.startsWith('local-')) {
-            const docRef = doc(db, 'transactions', editingTransaction.id);
-            await updateDoc(docRef, { ...transactionBase, updatedAt: serverTimestamp() });
-            toast.success('Berhasil diperbarui di Cloud');
-          } else {
-            await addDoc(collection(db, 'transactions'), {
-              ...transactionBase,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            toast.success('Berhasil disimpan ke Cloud');
-          }
-        } catch (e) {
-          console.warn("Cloud save failed, falling back to local", e);
-          localDb.saveTransaction({
-            ...transactionBase,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          toast.warning('Tersimpan secara Lokal (Cloud Offline)');
-        }
+        await addDoc(collection(db, 'transactions'), {
+          ...transactionData,
+          createdAt: serverTimestamp(),
+        });
+        toast.success('Berhasil disimpan ke Cloud');
       }
       
       onSuccess();
       reset();
     } catch (e) {
       console.error("Save error:", e);
-      toast.error('Gagal menyimpan transaksi');
+      handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
     } finally {
       setLoading(false);
     }

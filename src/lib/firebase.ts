@@ -26,39 +26,6 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, databaseId);
 
-// Add a simple local storage fallback for transactions/categories if cloud is failing
-export const localDb = {
-  saveTransaction: (data: any) => {
-    const txs = JSON.parse(localStorage.getItem('local_transactions') || '[]');
-    const newTx = { ...data, id: 'local-' + Date.now(), isLocal: true };
-    txs.push(newTx);
-    localStorage.setItem('local_transactions', JSON.stringify(txs));
-    window.dispatchEvent(new Event('local-db-update'));
-    return newTx;
-  },
-  getTransactions: () => {
-    return JSON.parse(localStorage.getItem('local_transactions') || '[]');
-  },
-  saveCategory: (data: any) => {
-    const cats = JSON.parse(localStorage.getItem('local_categories') || '[]');
-    const newCat = { ...data, id: 'local-cat-' + Date.now(), isLocal: true };
-    cats.push(newCat);
-    localStorage.setItem('local_categories', JSON.stringify(cats));
-    window.dispatchEvent(new Event('local-db-update'));
-    return newCat;
-  },
-  getCategories: () => {
-    return JSON.parse(localStorage.getItem('local_categories') || '[]');
-  }
-};
-
-// Dynamic check: Prefer cloud if API key is present
-export const isLocalMode = () => {
-  const config = firebaseConfig as any;
-  if (!config.apiKey || config.apiKey === "REPLACE_WITH_YOUR_API_KEY") return true;
-  return sessionStorage.getItem('manualUser') === 'local';
-};
-
 export const auth = getAuth(app);
 
 // Authentication readiness state

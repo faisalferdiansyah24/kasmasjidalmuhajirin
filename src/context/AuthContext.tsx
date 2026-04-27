@@ -28,62 +28,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Persistence for manual login (session only)
-  useEffect(() => {
-    const manualUserType = sessionStorage.getItem('manualUser');
-    if (manualUserType === 'local') {
-      const savedProfile = sessionStorage.getItem('manualProfile');
-      const savedUserUid = sessionStorage.getItem('manualUid');
-      
-      if (savedProfile && savedUserUid) {
-        setUser({ uid: savedUserUid } as User);
-        setProfile(JSON.parse(savedProfile));
-        setLoading(false);
-      }
-    }
-  }, []);
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      // If we have a local manual session, skip Google/Firebase auth sync
-      if (sessionStorage.getItem('manualUser') === 'local') {
-        setLoading(false);
+      if (!authUser) {
+        // Automatically sign in anonymously to allow open management
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.error('Auto anonymous sign-in failed:', e);
+          setLoading(false);
+        }
         return;
       }
+      
       setUser(authUser);
-      if (authUser) {
-        // Fetch or create profile
-        const userDoc = doc(db, 'users', authUser.uid);
-        const docSnap = await getDoc(userDoc);
-        
-        const manualUserHint = sessionStorage.getItem('manualUser');
-        const adminEmails = ['faisalferdiansyah69@gmail.com'];
-        const isGoogleAdmin = adminEmails.includes(authUser.email || '');
-        const isAnonAdmin = authUser.isAnonymous && manualUserHint;
-        
-        const intendedRole = (isGoogleAdmin || isAnonAdmin) ? 'admin' : 'viewer';
+      // Fetch or create profile
+      const userDoc = doc(db, 'users', authUser.uid);
+      const docSnap = await getDoc(userDoc);
+      
+      // Everyone is an admin now as per "openly manageable" request
+      const intendedRole = 'admin';
 
-        if (docSnap.exists()) {
-          const currentProfile = docSnap.data() as UserProfile;
-          if (currentProfile.role !== intendedRole) {
-            await setDoc(userDoc, { ...currentProfile, role: intendedRole }, { merge: true });
-            setProfile({ ...currentProfile, role: intendedRole });
-          } else {
-            setProfile(currentProfile);
-          }
+      if (docSnap.exists()) {
+        const currentProfile = docSnap.data() as UserProfile;
+        if (currentProfile.role !== intendedRole) {
+          await setDoc(userDoc, { ...currentProfile, role: intendedRole }, { merge: true });
+          setProfile({ ...currentProfile, role: intendedRole });
         } else {
-          const newProfile: UserProfile = {
-            uid: authUser.uid,
-            email: authUser.email || (authUser.isAnonymous ? 'anonymous@almuhajirin.com' : ''),
-            displayName: authUser.displayName || (authUser.isAnonymous ? 'Administrator Masjid' : 'Ikhwan Al-Muhajirin'),
-            photoURL: authUser.photoURL || (authUser.isAnonymous ? `https://api.dicebear.com/7.x/avataaars/svg?seed=admin` : null),
-            role: intendedRole
-          };
-          await setDoc(userDoc, newProfile);
-          setProfile(newProfile);
+          setProfile(currentProfile);
         }
       } else {
-        setProfile(null);
+        const newProfile: UserProfile = {
+          uid: authUser.uid,
+          email: authUser.email || (authUser.isAnonymous ? 'anonymous@almuhajirin.com' : ''),
+          displayName: authUser.displayName || (authUser.isAnonymous ? 'Pengelola Masjid' : 'Ikhwan Al-Muhajirin'),
+          photoURL: authUser.photoURL || (authUser.isAnonymous ? `https://api.dicebear.com/7.x/avataaars/svg?seed=admin` : null),
+          role: intendedRole
+        };
+        await setDoc(userDoc, newProfile);
+        setProfile(newProfile);
       }
       setLoading(false);
     });
@@ -104,37 +87,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const manualLogin = async (username: string, pass: string) => {
     if (username === 'admin' && pass === 'masukaja') {
       try {
-        // Try Firebase first
         await signInAnonymously(auth);
         sessionStorage.setItem('manualUser', 'true');
         return true;
       } catch (error: any) {
-        console.error('Firebase Auth Error, falling back to local:', error);
-        
-        // Local fallback
-        const manualUid = 'local-admin-' + Date.now();
-        const mockUser = {
-          uid: manualUid,
-          isAnonymous: true,
-          displayName: 'Administrator Masjid (Local)',
-          email: 'admin@local'
-        } as User;
-        
-        const mockProfile: UserProfile = {
-          uid: mockUser.uid,
-          email: mockUser.email!,
-          displayName: mockUser.displayName!,
-          photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`,
-          role: 'admin'
-        };
-        
-        setUser(mockUser);
-        setProfile(mockProfile);
-        sessionStorage.setItem('manualUser', 'local');
-        sessionStorage.setItem('manualUid', manualUid);
-        sessionStorage.setItem('manualProfile', JSON.stringify(mockProfile));
-        setLoading(false);
-        return true;
+        console.error('Firebase Auth Error:', error);
+        throw error;
       }
     }
     return false;
@@ -149,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
   };
 
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = true; // Openly manageable
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin, login, manualLogin, logout }}>
