@@ -13,7 +13,7 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+import { db, handleFirestoreError, OperationType, localDb } from '../lib/firebase.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Button } from './ui/button.tsx';
 import { Input } from './ui/input.tsx';
@@ -31,7 +31,7 @@ import { Transaction, Category, TransactionType } from '../types.ts';
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense']),
   amount: z.number().positive('Jumlah harus positif'),
-  categoryId: z.string().min(1, 'Pilih kategori'),
+  categoryName: z.string().min(1, 'Pilih atau ketik kategori'),
   description: z.string().min(3, 'Deskripsi minimal 3 karakter'),
   date: z.string().min(1, 'Pilih tanggal'),
 });
@@ -41,13 +41,13 @@ type TransactionValues = z.infer<typeof transactionSchema>;
 interface Props {
   editingTransaction?: Transaction | null;
   initialType?: TransactionType;
+  categories: Category[];
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialType, onSuccess, onCancel }) => {
+export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialType, categories, onSuccess, onCancel }) => {
   const { user } = useAuth();
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<TransactionValues>({
@@ -55,13 +55,13 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
     defaultValues: editingTransaction ? {
       type: editingTransaction.type,
       amount: editingTransaction.amount,
-      categoryId: editingTransaction.categoryId,
+      categoryName: editingTransaction.categoryName,
       description: editingTransaction.description,
       date: format(new Date(editingTransaction.date), 'yyyy-MM-dd'),
     } : {
       type: initialType || 'income',
       amount: 0,
-      categoryId: '',
+      categoryName: '',
       description: '',
       date: format(new Date(), 'yyyy-MM-dd'),
     }
@@ -73,7 +73,7 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
       reset({
         type: editingTransaction.type,
         amount: editingTransaction.amount,
-        categoryId: editingTransaction.categoryId,
+        categoryName: editingTransaction.categoryName,
         description: editingTransaction.description,
         date: format(new Date(editingTransaction.date), 'yyyy-MM-dd'),
       });
@@ -81,64 +81,88 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
       reset({
         type: initialType,
         amount: 0,
-        categoryId: '',
+        categoryName: '',
         description: '',
         date: format(new Date(), 'yyyy-MM-dd'),
       });
     }
   }, [editingTransaction, initialType, reset]);
 
-  const selectedType = watch('type');
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const q = query(collection(db, 'categories'), orderBy('name', 'asc'));
-        const snap = await getDocs(q);
-        setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchCategories();
-  }, []);
-
   const onSubmit = async (values: any) => {
     const data = values as TransactionValues;
     if (!user) return;
     setLoading(true);
 
-    const category = categories.find(c => c.id === data.categoryId);
-    const categoryName = category?.name || '';
-
     try {
-      if (editingTransaction) {
-        const docRef = doc(db, 'transactions', editingTransaction.id);
-        await updateDoc(docRef, {
-          ...data,
-          categoryName,
-          updatedAt: serverTimestamp(),
-        });
-        toast.success('Transaksi berhasil diperbarui');
-      } else {
-        await addDoc(collection(db, 'transactions'), {
-          ...data,
-          categoryName,
-          createdBy: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        toast.success('Transaksi berhasil ditambahkan');
+      // Find if category already exists
+      let category = categories.find(c => c.name.toLowerCase() === data.categoryName.toLowerCase() && c.type === data.type);
+      let categoryId = category?.id || '';
+      let finalCategoryName = data.categoryName;
+
+      // If it doesn't exist, create it automatically
+      if (!categoryId) {
+        try {
+          const newCatRef = await addDoc(collection(db, 'categories'), {
+            name: data.categoryName,
+            type: data.type,
+            createdAt: serverTimestamp()
+          });
+          categoryId = newCatRef.id;
+        } catch (e) {
+          console.error("Failed to create new category record, using local/temporary ID", e);
+          const localCat = localDb.saveCategory({ name: data.categoryName, type: data.type });
+          categoryId = localCat.id;
+        }
       }
-      onSuccess();
-      reset();
+
+      const transactionData = {
+        type: data.type,
+        amount: data.amount,
+        categoryId,
+        categoryName: finalCategoryName,
+        description: data.description,
+        date: data.date,
+        updatedAt: serverTimestamp(),
+      };
+
+      try {
+        if (editingTransaction) {
+          const docRef = doc(db, 'transactions', editingTransaction.id);
+          await updateDoc(docRef, transactionData);
+          toast.success('Transaksi berhasil diperbarui');
+        } else {
+          try {
+            await addDoc(collection(db, 'transactions'), {
+              ...transactionData,
+              createdBy: user.uid,
+              createdAt: serverTimestamp(),
+            });
+            toast.success('Transaksi berhasil ditambahkan');
+          } catch (e: any) {
+            console.warn("Firestore save failed, using local storage fallback", e.message);
+            localDb.saveTransaction({
+              ...transactionData,
+              createdBy: user.uid,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            toast.warning('Tersimpan di penyimpanan lokal browser (Cloud Offline)');
+          }
+        }
+        onSuccess();
+        reset();
+      } catch (e) {
+        handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
+      }
     } catch (e) {
-      handleFirestoreError(e, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
+      console.error("Generic form error:", e);
+      toast.error('Gagal memproses transaksi');
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedType = watch('type');
   const filteredCategories = categories.filter(c => c.type === selectedType);
 
   return (
@@ -148,7 +172,7 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
           <Label>Jenis</Label>
           <Select 
             onValueChange={(v) => setValue('type', v as any)} 
-            defaultValue={watch('type')}
+            value={watch('type')}
           >
             <SelectTrigger>
               <SelectValue placeholder="Pilih Jenis" />
@@ -169,27 +193,20 @@ export const TransactionForm: React.FC<Props> = ({ editingTransaction, initialTy
 
       <div className="space-y-2">
         <Label>Kategori</Label>
-        <Select 
-          onValueChange={(v) => setValue('categoryId', v)} 
-          defaultValue={watch('categoryId')}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Pilih Kategori" />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredCategories.length === 0 ? (
-              <div className="p-4 text-xs text-slate-400 text-center">
-                Memuat kategori... <br/>
-                (Pastikan Anda sudah masuk sebagai Admin)
-              </div>
-            ) : (
-              filteredCategories.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-        {errors.categoryId && <p className="text-xs text-red-500">{errors.categoryId.message}</p>}
+        <div className="relative">
+          <Input 
+            placeholder="Pilih atau ketik kategori baru..." 
+            list="category-suggestions"
+            {...register('categoryName')}
+            className="pr-10"
+          />
+          <datalist id="category-suggestions">
+            {filteredCategories.map(c => (
+              <option key={c.id} value={c.name} />
+            ))}
+          </datalist>
+        </div>
+        {errors.categoryName && <p className="text-xs text-red-500">{errors.categoryName.message}</p>}
       </div>
 
       <div className="space-y-2">

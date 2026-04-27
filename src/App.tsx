@@ -10,9 +10,9 @@ import {
   getDocs,
   addDoc
 } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from './lib/firebase.ts';
+import { db, auth, handleFirestoreError, OperationType, localDb } from './lib/firebase.ts';
 import { useAuth, AuthProvider } from './context/AuthContext.tsx';
-import { Transaction, TransactionType } from './types.ts';
+import { Transaction, Category, TransactionType } from './types.ts';
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -243,49 +243,89 @@ const LoginScreen = () => {
 const Dashboard = () => {
   const { user, isAdmin, profile, logout } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'categories'>('overview');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
-    // Seed categories if empty and user is admin
-    const seedCategories = async () => {
-      if (!isAdmin) return;
+    // Seed and fetch categories
+    const initCategories = async () => {
+      const catRef = collection(db, 'categories');
+      const q = query(catRef, orderBy('name', 'asc'));
       
-      const q = query(collection(db, 'categories'));
-      const snap = await getDocs(q);
-      
-      if (snap.empty) {
-        const defaultCats = [
-          { name: 'Infaq Jumat', type: 'income' },
-          { name: 'Sedekah Subuh', type: 'income' },
-          { name: 'Kotak Amal', type: 'income' },
-          { name: 'Zakat/Wakaf', type: 'income' },
-          { name: 'Listrik/Air', type: 'expense' },
-          { name: 'Kebersihan', type: 'expense' },
-          { name: 'Gaji Marbot', type: 'expense' },
-          { name: 'Kegiatan Masjid', type: 'expense' },
-          { name: 'Lain-lain', type: 'expense' }
-        ];
+      const unsubscribe = onSnapshot(q, async (snap) => {
+        const remoteCats = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+        const localCats = localDb.getCategories() as Category[];
         
-        for (const cat of defaultCats) {
-          await addDoc(collection(db, 'categories'), cat);
+        // Merge without duplicates by name+type
+        const merged = [...remoteCats];
+        localCats.forEach(lc => {
+          if (!merged.find(mc => mc.name.toLowerCase() === lc.name.toLowerCase() && mc.type === lc.type)) {
+            merged.push(lc);
+          }
+        });
+        
+        setCategories(merged);
+
+        if (snap.empty && isAdmin && remoteCats.length === 0) {
+          const defaultCats = [
+            { name: 'Infaq Jumat', type: 'income' },
+            { name: 'Sedekah Subuh', type: 'income' },
+            { name: 'Kotak Amal', type: 'income' },
+            { name: 'Zakat/Wakaf', type: 'income' },
+            { name: 'Listrik/Air', type: 'expense' },
+            { name: 'Kebersihan', type: 'expense' },
+            { name: 'Gaji Marbot', type: 'expense' },
+            { name: 'Kegiatan Masjid', type: 'expense' },
+            { name: 'Lain-lain', type: 'expense' }
+          ];
+          for (const cat of defaultCats) {
+            try {
+              await addDoc(collection(db, 'categories'), cat);
+            } catch (e) {
+              console.error("Failed to seed default categories to cloud", e);
+            }
+          }
         }
-        console.log('Categories seeded');
-      }
+      }, (error) => {
+        console.warn("Retrying category connection...", error.message);
+        // Fallback to purely local if cloud fails
+        setCategories(localDb.getCategories() as Category[]);
+      });
+      
+      return unsubscribe;
     };
     
-    seedCategories();
+    let unsub: any;
+    initCategories().then(u => unsub = u);
+    return () => unsub && unsub();
   }, [isAdmin]);
 
   useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
-      setTransactions(data);
+      const remoteData = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return { 
+          ...d, 
+          id: doc.id,
+          date: d.date || new Date().toISOString(), // safety
+        } as Transaction;
+      });
+      const localData = localDb.getTransactions() as Transaction[];
+      
+      // Merge and sort
+      const merged = [...remoteData, ...localData].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      
+      setTransactions(merged);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'transactions');
+      console.warn("Firestore transactions snapshot error:", error.message);
+      // Fallback to local
+      setTransactions(localDb.getTransactions() as Transaction[]);
     });
 
     return () => unsubscribe();
@@ -297,13 +337,15 @@ const Dashboard = () => {
     return acc;
   }, { income: 0, expense: 0 });
 
-  // Data preparation for charts
+  // Data preparation for charts - ONLY EXPENSES for "Allocation"
   const pieData = Object.entries(
-    transactions.reduce((acc: Record<string, number>, curr) => {
-      const cat = curr.categoryName || 'Lainnya';
-      acc[cat] = (acc[cat] || 0) + curr.amount;
-      return acc;
-    }, {})
+    transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc: Record<string, number>, curr) => {
+        const cat = curr.categoryName || 'Lainnya';
+        acc[cat] = (acc[cat] || 0) + curr.amount;
+        return acc;
+      }, {})
   ).map(([name, value]) => ({ name, value: value as number }))
    .sort((a, b) => b.value - a.value)
    .slice(0, 5);
@@ -391,6 +433,12 @@ const Dashboard = () => {
               >
                 <History size={20} /> Transaksi
               </div>
+              <div 
+                className={`px-4 py-3 rounded-xl flex items-center gap-3 text-sm font-bold cursor-pointer transition-all duration-200 ${activeTab === 'categories' ? 'bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100' : 'text-slate-500 hover:bg-slate-50'}`}
+                onClick={() => {setActiveTab('categories'); setIsSidebarOpen(false);}}
+              >
+                <TrendingUp size={20} /> Kategori Dana
+              </div>
             </nav>
           </div>
 
@@ -420,14 +468,15 @@ const Dashboard = () => {
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl lg:text-3xl font-bold tracking-tight text-masjid-slate">
-                {activeTab === 'overview' ? 'Dashboard Utama' : 'Riwayat Transaksi'}
+                {activeTab === 'overview' ? 'Dashboard Utama' : 
+                 activeTab === 'history' ? 'Riwayat Transaksi' : 'Pengaturan Kategori'}
               </h2>
               <p className="text-slate-400 text-xs lg:text-sm mt-1 uppercase tracking-wider font-medium">
                 {format(new Date(), 'EEEE, dd MMMM yyyy', { locale: id })}
               </p>
             </div>
             
-            {isAdmin && (
+            {isAdmin && activeTab !== 'categories' && (
               <div className="flex gap-2 w-full md:w-auto">
                 <Dialog open={isFormOpen} onOpenChange={(open) => { setIsFormOpen(open); if(!open) setEditingTransaction(null); }}>
                   <div className="flex gap-2 w-full">
@@ -456,6 +505,7 @@ const Dashboard = () => {
                     <TransactionForm 
                       editingTransaction={editingTransaction}
                       initialType={dialogType}
+                      categories={categories}
                       onSuccess={() => setIsFormOpen(false)} 
                       onCancel={() => setIsFormOpen(false)} 
                     />
@@ -464,6 +514,45 @@ const Dashboard = () => {
               </div>
             )}
           </div>
+
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              <Card className="bento-card">
+                <CardHeader>
+                  <CardTitle>Daftar Kategori Dana</CardTitle>
+                  <CardDescription>Kategori yang tersedia untuk memilah transaksi keuangan.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <h4 className="font-bold text-emerald-700 mb-4 flex items-center gap-2">
+                        <ArrowUpCircle size={18} /> Pemasukan (Masuk)
+                      </h4>
+                      <div className="space-y-2">
+                        {categories.filter(c => c.type === 'income').map(c => (
+                          <div key={c.id} className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center">
+                            <span className="font-bold text-emerald-900">{c.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-orange-700 mb-4 flex items-center gap-2">
+                        <ArrowDownCircle size={18} /> Pengeluaran (Keluar)
+                      </h4>
+                      <div className="space-y-2">
+                        {categories.filter(c => c.type === 'expense').map(c => (
+                          <div key={c.id} className="p-3 bg-orange-50 rounded-xl border border-orange-100 flex justify-between items-center">
+                            <span className="font-bold text-orange-900">{c.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">

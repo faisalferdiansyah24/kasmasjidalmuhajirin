@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { 
+  User, 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut,
+  signInAnonymously
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase.ts';
 import { UserProfile } from '../types.ts';
 
@@ -23,49 +30,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Persistence for manual login (session only)
   useEffect(() => {
-    const savedManualUser = sessionStorage.getItem('manualUser');
-    if (savedManualUser) {
-      const data = JSON.parse(savedManualUser);
-      setUser(data.user);
-      setProfile(data.profile);
+    const manualUserType = sessionStorage.getItem('manualUser');
+    if (manualUserType === 'local') {
+      const savedProfile = sessionStorage.getItem('manualProfile');
+      const savedUserUid = sessionStorage.getItem('manualUid');
+      
+      if (savedProfile && savedUserUid) {
+        setUser({ uid: savedUserUid } as User);
+        setProfile(JSON.parse(savedProfile));
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      // Only handle Firebase auth changes if we don't have a manual session
-      if (!sessionStorage.getItem('manualUser')) {
-        setUser(authUser);
-        if (authUser) {
-          // Fetch or create profile
-          const userDoc = doc(db, 'users', authUser.uid);
-          const docSnap = await getDoc(userDoc);
-          
-          const adminEmails = ['faisalferdiansyah69@gmail.com'];
-          const intendedRole = adminEmails.includes(authUser.email || '') ? 'admin' : 'viewer';
+      // If we have a local manual session, skip Google/Firebase auth sync
+      if (sessionStorage.getItem('manualUser') === 'local') {
+        setLoading(false);
+        return;
+      }
+      setUser(authUser);
+      if (authUser) {
+        // Fetch or create profile
+        const userDoc = doc(db, 'users', authUser.uid);
+        const docSnap = await getDoc(userDoc);
+        
+        const manualUserHint = sessionStorage.getItem('manualUser');
+        const adminEmails = ['faisalferdiansyah69@gmail.com'];
+        const isGoogleAdmin = adminEmails.includes(authUser.email || '');
+        const isAnonAdmin = authUser.isAnonymous && manualUserHint;
+        
+        const intendedRole = (isGoogleAdmin || isAnonAdmin) ? 'admin' : 'viewer';
 
-          if (docSnap.exists()) {
-            const currentProfile = docSnap.data() as UserProfile;
-            if (currentProfile.role !== intendedRole && intendedRole === 'admin') {
-              await setDoc(userDoc, { ...currentProfile, role: 'admin' }, { merge: true });
-              setProfile({ ...currentProfile, role: 'admin' });
-            } else {
-              setProfile(currentProfile);
-            }
+        if (docSnap.exists()) {
+          const currentProfile = docSnap.data() as UserProfile;
+          if (currentProfile.role !== intendedRole) {
+            await setDoc(userDoc, { ...currentProfile, role: intendedRole }, { merge: true });
+            setProfile({ ...currentProfile, role: intendedRole });
           } else {
-            const newProfile: UserProfile = {
-              uid: authUser.uid,
-              email: authUser.email || '',
-              displayName: authUser.displayName || 'Ikhwan Al-Muhajirin',
-              photoURL: authUser.photoURL || '',
-              role: intendedRole
-            };
-            await setDoc(userDoc, newProfile);
-            setProfile(newProfile);
+            setProfile(currentProfile);
           }
         } else {
-          setProfile(null);
+          const newProfile: UserProfile = {
+            uid: authUser.uid,
+            email: authUser.email || (authUser.isAnonymous ? 'anonymous@almuhajirin.com' : ''),
+            displayName: authUser.displayName || (authUser.isAnonymous ? 'Administrator Masjid' : 'Ikhwan Al-Muhajirin'),
+            photoURL: authUser.photoURL || (authUser.isAnonymous ? `https://api.dicebear.com/7.x/avataaars/svg?seed=admin` : ''),
+            role: intendedRole
+          };
+          await setDoc(userDoc, newProfile);
+          setProfile(newProfile);
         }
+      } else {
+        setProfile(null);
       }
       setLoading(false);
     });
@@ -85,32 +103,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const manualLogin = async (username: string, pass: string) => {
     if (username === 'admin' && pass === 'masukaja') {
-      const mockUser = {
-        uid: 'admin-manual',
-        email: 'admin@almuhajirin.com',
-        displayName: 'Administrator Masjid',
-        photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`
-      } as User;
-      
-      const mockProfile: UserProfile = {
-        uid: mockUser.uid,
-        email: mockUser.email!,
-        displayName: mockUser.displayName!,
-        photoURL: mockUser.photoURL!,
-        role: 'admin'
-      };
-
-      setUser(mockUser);
-      setProfile(mockProfile);
-      sessionStorage.setItem('manualUser', JSON.stringify({ user: mockUser, profile: mockProfile }));
-      return true;
+      try {
+        // Sign in anonymously to Firebase so we have a valid auth context for Firestore
+        await signInAnonymously(auth);
+        sessionStorage.setItem('manualUser', 'true');
+        return true;
+      } catch (error: any) {
+        console.error('Manual login anon error:', error);
+        
+        // FALLBACK: If API key is invalid, still let them in with a mock session
+        // This is a last resort to allow the user to use the dashboard
+        if (error.message.includes('api-key-not-valid') || error.message.includes('apiKey')) {
+          const manualUid = 'manual-admin-' + Date.now();
+          const mockUser = {
+            uid: manualUid,
+            isAnonymous: true,
+            displayName: 'Administrator Masjid (Local Mode)',
+            email: 'admin@local'
+          } as User;
+          
+          const mockProfile: UserProfile = {
+            uid: mockUser.uid,
+            email: mockUser.email!,
+            displayName: mockUser.displayName!,
+            photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`,
+            role: 'admin'
+          };
+          
+          setUser(mockUser);
+          setProfile(mockProfile);
+          sessionStorage.setItem('manualUser', 'local');
+          sessionStorage.setItem('manualUid', manualUid);
+          sessionStorage.setItem('manualProfile', JSON.stringify(mockProfile));
+          setLoading(false);
+          return true;
+        }
+        return false;
+      }
     }
     return false;
   };
 
   const logout = async () => {
-    await signOut(auth);
     sessionStorage.removeItem('manualUser');
+    sessionStorage.removeItem('manualUid');
+    sessionStorage.removeItem('manualProfile');
+    await signOut(auth);
     setUser(null);
     setProfile(null);
   };

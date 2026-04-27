@@ -19,10 +19,36 @@ console.log("Firebase context:", {
 
 const app = initializeApp(firebaseConfig);
 
+const databaseId = firebaseConfig?.firestoreDatabaseId || '(default)';
+
 // Use initializeFirestore with long polling for better reliability in this environment
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId || '(default)');
+}, databaseId);
+
+// Add a simple local storage fallback for transactions/categories if cloud is failing
+export const localDb = {
+  saveTransaction: (data: any) => {
+    const txs = JSON.parse(localStorage.getItem('local_transactions') || '[]');
+    const newTx = { ...data, id: 'local-' + Date.now(), isLocal: true };
+    txs.push(newTx);
+    localStorage.setItem('local_transactions', JSON.stringify(txs));
+    return newTx;
+  },
+  getTransactions: () => {
+    return JSON.parse(localStorage.getItem('local_transactions') || '[]');
+  },
+  saveCategory: (data: any) => {
+    const cats = JSON.parse(localStorage.getItem('local_categories') || '[]');
+    const newCat = { ...data, id: 'local-cat-' + Date.now(), isLocal: true };
+    cats.push(newCat);
+    localStorage.setItem('local_categories', JSON.stringify(cats));
+    return newCat;
+  },
+  getCategories: () => {
+    return JSON.parse(localStorage.getItem('local_categories') || '[]');
+  }
+};
 
 export const auth = getAuth(app);
 
@@ -77,14 +103,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // CRITICAL: Connection test
 async function testConnection() {
   try {
-    console.log("Testing Firestore connection with database:", firebaseConfig.firestoreDatabaseId);
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connection test completed (ignoring potential permission errors)");
+    console.log("Checking Firestore availability...");
+    // Try to reach the server. We don't necessarily care about the result for this check,
+    // just if the client throws an 'offline' error.
+    await getDocFromServer(doc(db, 'system', 'connection-test'));
+    console.log("Firestore backend reached.");
   } catch (error) {
     if (error instanceof Error) {
-      console.error("Firestore connection test error:", error.message);
-      if (error.message.includes('the client is offline') || error.message.includes('unavailable')) {
-        console.error("Please check your Firebase configuration. The client appears to be offline or unreachable.");
+      if (error.message.includes('offline') || error.message.includes('unavailable')) {
+        console.warn("Firestore client reports as offline. Initializing fallback mode...");
+      } else {
+        // Permission denied is expected and means we ARE connected
+        console.log("Firestore connection verified (Permission Denied as expected).");
       }
     }
   }
