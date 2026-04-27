@@ -10,9 +10,9 @@ import {
   getDocs,
   addDoc
 } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from './lib/firebase';
-import { useAuth, AuthProvider } from './context/AuthContext';
-import { Transaction, TransactionType } from './types';
+import { db, auth, handleFirestoreError, OperationType } from '@/lib/firebase';
+import { useAuth, AuthProvider } from '@/context/AuthContext';
+import { Transaction, TransactionType } from '@/types';
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -28,8 +28,8 @@ import {
   Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from './components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { 
   Dialog, 
   DialogContent, 
@@ -37,7 +37,7 @@ import {
   DialogTitle, 
   DialogTrigger,
   DialogDescription
-} from './components/ui/dialog';
+} from '@/components/ui/dialog';
 import { 
   Table, 
   TableBody, 
@@ -45,12 +45,12 @@ import {
   TableHead, 
   TableHeader, 
   TableRow 
-} from './components/ui/table';
-import { Badge } from './components/ui/badge';
-import { TransactionForm } from './components/TransactionForm';
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { TransactionForm } from '@/components/TransactionForm';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { Toaster } from './components/ui/sonner';
+import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
