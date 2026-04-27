@@ -10,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   login: () => Promise<void>;
+  manualLogin: (username: string, pass: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -20,40 +21,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Persistence for manual login (session only)
+  useEffect(() => {
+    const savedManualUser = sessionStorage.getItem('manualUser');
+    if (savedManualUser) {
+      const data = JSON.parse(savedManualUser);
+      setUser(data.user);
+      setProfile(data.profile);
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setUser(authUser);
-      if (authUser) {
-        // Fetch or create profile
-        const userDoc = doc(db, 'users', authUser.uid);
-        const docSnap = await getDoc(userDoc);
-        
-        const adminEmails = ['faisalferdiansyah69@gmail.com'];
-        const intendedRole = adminEmails.includes(authUser.email || '') ? 'admin' : 'viewer';
+      // Only handle Firebase auth changes if we don't have a manual session
+      if (!sessionStorage.getItem('manualUser')) {
+        setUser(authUser);
+        if (authUser) {
+          // Fetch or create profile
+          const userDoc = doc(db, 'users', authUser.uid);
+          const docSnap = await getDoc(userDoc);
+          
+          const adminEmails = ['faisalferdiansyah69@gmail.com'];
+          const intendedRole = adminEmails.includes(authUser.email || '') ? 'admin' : 'viewer';
 
-        if (docSnap.exists()) {
-          const currentProfile = docSnap.data() as UserProfile;
-          // Force update role if it should be admin but isn't
-          if (currentProfile.role !== intendedRole && intendedRole === 'admin') {
-            await setDoc(userDoc, { ...currentProfile, role: 'admin' }, { merge: true });
-            setProfile({ ...currentProfile, role: 'admin' });
+          if (docSnap.exists()) {
+            const currentProfile = docSnap.data() as UserProfile;
+            if (currentProfile.role !== intendedRole && intendedRole === 'admin') {
+              await setDoc(userDoc, { ...currentProfile, role: 'admin' }, { merge: true });
+              setProfile({ ...currentProfile, role: 'admin' });
+            } else {
+              setProfile(currentProfile);
+            }
           } else {
-            setProfile(currentProfile);
+            const newProfile: UserProfile = {
+              uid: authUser.uid,
+              email: authUser.email || '',
+              displayName: authUser.displayName || 'Ikhwan Al-Muhajirin',
+              photoURL: authUser.photoURL || '',
+              role: intendedRole
+            };
+            await setDoc(userDoc, newProfile);
+            setProfile(newProfile);
           }
         } else {
-          // Create default profile
-          const newProfile: UserProfile = {
-            uid: authUser.uid,
-            email: authUser.email || '',
-            displayName: authUser.displayName || 'Ikhwan Al-Muhajirin',
-            photoURL: authUser.photoURL || '',
-            role: intendedRole
-          };
-          await setDoc(userDoc, newProfile);
-          setProfile(newProfile);
+          setProfile(null);
         }
-      } else {
-        setProfile(null);
       }
       setLoading(false);
     });
@@ -71,12 +83,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => signOut(auth);
+  const manualLogin = async (username: string, pass: string) => {
+    if (username === 'admin' && pass === 'masukaja') {
+      const mockUser = {
+        uid: 'admin-manual',
+        email: 'admin@almuhajirin.com',
+        displayName: 'Administrator Masjid',
+        photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`
+      } as User;
+      
+      const mockProfile: UserProfile = {
+        uid: mockUser.uid,
+        email: mockUser.email!,
+        displayName: mockUser.displayName!,
+        photoURL: mockUser.photoURL!,
+        role: 'admin'
+      };
+
+      setUser(mockUser);
+      setProfile(mockProfile);
+      sessionStorage.setItem('manualUser', JSON.stringify({ user: mockUser, profile: mockProfile }));
+      return true;
+    }
+    return false;
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    sessionStorage.removeItem('manualUser');
+    setUser(null);
+    setProfile(null);
+  };
 
   const isAdmin = profile?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, login, manualLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );
