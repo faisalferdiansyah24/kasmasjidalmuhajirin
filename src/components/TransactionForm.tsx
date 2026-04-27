@@ -13,20 +13,20 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
+import { useAuth } from '../context/AuthContext.tsx';
+import { Button } from './ui/button.tsx';
+import { Input } from './ui/input.tsx';
 import { 
   Select, 
   SelectContent, 
   SelectItem, 
   SelectTrigger, 
   SelectValue 
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
+} from './ui/select.tsx';
+import { Label } from './ui/label.tsx';
 import { toast } from 'sonner';
-import { Transaction, Category, TransactionType } from '@/types';
+import { Transaction, Category, TransactionType } from '../types.ts';
 
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense']),
