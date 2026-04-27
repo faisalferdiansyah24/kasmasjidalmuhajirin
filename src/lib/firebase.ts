@@ -52,7 +52,7 @@ export const localDb = {
   }
 };
 
-// Dynamic check: Local if no API key or if user explicitly chose local mode
+// Dynamic check: Prefer cloud if API key is present
 export const isLocalMode = () => {
   const config = firebaseConfig as any;
   if (!config.apiKey || config.apiKey === "REPLACE_WITH_YOUR_API_KEY") return true;

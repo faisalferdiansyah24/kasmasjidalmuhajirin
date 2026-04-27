@@ -112,7 +112,7 @@ const LoginScreen = () => {
               <Wallet size={40} className="stroke-[1.5]" />
             </div>
             <h1 className="text-3xl font-black tracking-tight text-slate-800 text-center">Masjid Al-Muhajirin</h1>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-2 text-center">Sistem Keuangan (Mode Lokal)</p>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-2 text-center">Sistem Keuangan {isLocalMode() ? '(Mode Lokal)' : '(Cloud Sync)'}</p>
           </div>
 
           <form onSubmit={handleManualLogin} className="space-y-5">
@@ -166,37 +166,103 @@ const Dashboard = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
-    // Pure local categories
     const local = isLocalMode();
+    
     const fetchCategories = () => {
-      const cats = localDb.getCategories() as Category[];
-      if (cats.length === 0) {
-        const defaultCats = [
-          { id: '1', name: 'Infaq Jumat', type: 'income' as TransactionType },
-          { id: '2', name: 'Sedekah Subuh', type: 'income' as TransactionType },
-          { id: '3', name: 'Kotak Amal', type: 'income' as TransactionType },
-          { id: '4', name: 'Listrik/Air', type: 'expense' as TransactionType },
-          { id: '5', name: 'Gaji Marbot', type: 'expense' as TransactionType }
-        ];
-        setCategories(defaultCats);
-      } else {
-        setCategories(cats);
+      if (local) {
+        setCategories(localDb.getCategories() as Category[]);
       }
     };
 
-    fetchCategories();
-    window.addEventListener('local-db-update', fetchCategories);
-    return () => window.removeEventListener('local-db-update', fetchCategories);
+    if (local) {
+      fetchCategories();
+      window.addEventListener('local-db-update', fetchCategories);
+      return () => window.removeEventListener('local-db-update', fetchCategories);
+    }
+
+    // Cloud fetching with local fallback/merge
+    const catRef = collection(db, 'categories');
+    const q = query(catRef, orderBy('name', 'asc'));
+    
+    const unsubscribe = onSnapshot(q, async (snap) => {
+      const remoteCats = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+      const localCats = localDb.getCategories() as Category[];
+      
+      // Merge without duplicates by name+type
+      const merged = [...remoteCats];
+      localCats.forEach(lc => {
+        if (!merged.find(mc => mc.name.toLowerCase() === lc.name.toLowerCase() && mc.type === lc.type)) {
+          merged.push(lc);
+        }
+      });
+      
+      setCategories(merged);
+
+      // Seed defaults if totally empty
+      if (snap.empty && isAdmin && remoteCats.length === 0) {
+        const defaultCats = [
+          { name: 'Infaq Jumat', type: 'income' },
+          { name: 'Sedekah Subuh', type: 'income' },
+          { name: 'Kotak Amal', type: 'income' },
+          { name: 'Zakat/Wakaf', type: 'income' },
+          { name: 'Listrik/Air', type: 'expense' },
+          { name: 'Gaji Marbot', type: 'expense' },
+          { name: 'Lain-lain', type: 'expense' }
+        ];
+        for (const cat of defaultCats) {
+          try {
+            await addDoc(collection(db, 'categories'), cat);
+          } catch (e) {
+            console.error("Failed to seed default categories", e);
+          }
+        }
+      }
+    }, (error) => {
+      console.warn("Category sync error:", error.message);
+      setCategories(localDb.getCategories() as Category[]);
+    });
+    
+    return unsubscribe;
   }, [isAdmin]);
 
   useEffect(() => {
+    const local = isLocalMode();
+    
     const fetchTransactions = () => {
-      setTransactions(localDb.getTransactions() as Transaction[]);
+      if (local) {
+        setTransactions(localDb.getTransactions() as Transaction[]);
+      }
     };
 
-    fetchTransactions();
-    window.addEventListener('local-db-update', fetchTransactions);
-    return () => window.removeEventListener('local-db-update', fetchTransactions);
+    if (local) {
+      fetchTransactions();
+      window.addEventListener('local-db-update', fetchTransactions);
+      return () => window.removeEventListener('local-db-update', fetchTransactions);
+    }
+
+    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const remoteData = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return { 
+          ...d, 
+          id: doc.id,
+          date: d.date || new Date().toISOString(),
+        } as Transaction;
+      });
+      const localData = localDb.getTransactions() as Transaction[];
+      
+      const merged = [...remoteData, ...localData].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      
+      setTransactions(merged);
+    }, (error) => {
+      console.warn("Transaction sync error:", error.message);
+      setTransactions(localDb.getTransactions() as Transaction[]);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const stats = transactions.reduce((acc: { income: number; expense: number }, curr) => {
